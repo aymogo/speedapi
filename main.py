@@ -1,4 +1,5 @@
 from app import SpeedAPI
+from middleware import BaseMiddleware
 
 app = SpeedAPI()
 
@@ -46,3 +47,14 @@ app.add_exception_handler(on_exception)
 @app.route("/exception")
 def exception_throwing_api(request):
     raise AttributeError("Attribute Error")
+
+
+class LoggingMiddleware(BaseMiddleware):
+    def process_request(self, request):
+        print("Request is being processed...")
+
+    def process_response(self, request, response):
+        print("Response has been send.")
+
+
+app.add_middleware(LoggingMiddleware)

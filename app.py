@@ -6,18 +6,30 @@ import wsgiadapter
 from jinja2 import Environment, FileSystemLoader
 from parse import parse
 from webob import Request, Response
+from whitenoise import WhiteNoise
+
+from middleware import BaseMiddleware
 
 
 class SpeedAPI:
-    def __init__(self, template_dir="templates"):
+    def __init__(self, template_dir="templates", staticfiles_dir="static"):
         self.routes = dict()
         self.count = 0
         self.template_env = Environment(
             loader=FileSystemLoader(os.path.abspath(template_dir))
         )
         self.custom_exception_handler = None
+        self.staticfiles_prefix = "/static"
+        self.whitenoise_app = WhiteNoise(self.get_wsgi_app, root=staticfiles_dir, prefix=self.staticfiles_prefix)
+        self.middleware = BaseMiddleware(app=self)
 
     def __call__(self, environ, start_response):
+        path_info = environ["PATH_INFO"]
+        if path_info.startswith(self.staticfiles_prefix):
+            return self.whitenoise_app(environ, start_response)
+        return self.middleware(environ, start_response)
+
+    def get_wsgi_app(self, environ, start_response):
         request = Request(environ)
         response = self.handle_request(request)
         return response(environ, start_response)
@@ -83,3 +95,6 @@ class SpeedAPI:
 
     def add_exception_handler(self, handler):
         self.custom_exception_handler = handler
+
+    def add_middleware(self, middleware_cls):
+        self.middleware.add(middleware_cls)
