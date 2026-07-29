@@ -22,6 +22,7 @@ class SpeedAPI:
         self.staticfiles_prefix = "/static"
         self.whitenoise_app = WhiteNoise(self.get_wsgi_app, root=staticfiles_dir, prefix=self.staticfiles_prefix)
         self.middleware = BaseMiddleware(app=self)
+        self.ALL_HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD", "CONNECT", "TRACE"]
 
     def __call__(self, environ, start_response):
         path_info = environ["PATH_INFO"]
@@ -34,11 +35,14 @@ class SpeedAPI:
         response = self.handle_request(request)
         return response(environ, start_response)
 
-    def route(self, path, *args, **kwargs):
+    def route(self, path, allowed_methods=None, *args, **kwargs):
         assert path not in self.routes, "Duplicate path is not allowed"
 
         def wrapper(handler):
-            self.routes[path] = handler
+            nonlocal allowed_methods
+            if allowed_methods is None:
+                allowed_methods = self.ALL_HTTP_METHODS
+            self.routes[path] = dict(handler=handler, allowed_methods=allowed_methods)
             handler._counter = kwargs.get("counter", False)
             return handler
 
@@ -47,22 +51,26 @@ class SpeedAPI:
     def handle_request(self, request):
         response = Response()
 
-        handler, kwargs = self.find_handler(request)
+        handler_data, kwargs = self.find_handler(request)
 
-        if handler is None:
+        if handler_data is None:
             self.default_response(response)
             return response
+
+        handler = handler_data["handler"]
+        allowed_methods = handler_data["allowed_methods"]
 
         if inspect.isclass(handler):
             request_method = request.method.lower()
             handler = getattr(handler(), request_method, None)
             if handler is None:
-                response.status_code = 405
-                response.text = "Method not allowed"
-                return response
+                return self.method_not_allwed_response(response)
 
         if getattr(handler, '_counter', False):
             self.count += 1
+
+        if request.method not in allowed_methods:
+            return self.method_not_allwed_response(response)
 
         try:
             response.text = handler(request, **kwargs)
@@ -74,15 +82,20 @@ class SpeedAPI:
         return response
 
     def find_handler(self, request):
-        for path, handler in self.routes.items():
+        for path, handler_data in self.routes.items():
             parsed_path = parse(path, request.path)
             if parsed_path:
-                return handler, parsed_path.named
+                return handler_data, parsed_path.named
         return None, None
 
     def default_response(self, response):
         response.status_code = 404
         response.text = "Page Not Found"
+
+    def method_not_allwed_response(self, response):
+        response.status_code = 405
+        response.text = "Method not allowed"
+        return response
 
     def test_session(self):
         session = requests.Session()

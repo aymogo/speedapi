@@ -95,3 +95,13 @@ def test_css_static_file(test_client):
 
     assert response.text == "body { background-color: navy; }"
 
+
+def test_allowed_methods(app, test_client):
+    @app.route("/home", allowed_methods=["POST"])
+    def home(req):
+        return "You are in Home!"
+
+    response = test_client.get("http://testserver/home")
+    assert response.status_code == 405
+    assert response.text == "Method not allowed"
+

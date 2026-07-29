@@ -4,7 +4,7 @@ from middleware import BaseMiddleware
 app = SpeedAPI()
 
 
-@app.route("/home")
+@app.route("/home", allowed_methods=["GET"])
 def home(request):
     return "You are in Home!"
 
